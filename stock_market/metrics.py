@@ -150,7 +150,7 @@ class Metrics:
             if st < ed:
                 self.data.loc[st + BDay(1):ed, ([self.CLOSE, self.VOLUME], delisted_ticker)] = (f.loc[st], 0.)
 
-        if tickers_to_correct_for_splits is not None:
+        if tickers_to_correct_for_splits:
             # Ensure we don't bother with tickers that are not part of the market
             tickers_to_correct_for_splits = set(tickers_to_correct_for_splits) & self.ticker_symbols.keys()
             for ticker in tickers_to_correct_for_splits:
@@ -161,10 +161,11 @@ class Metrics:
                     f.to_csv(f'./stock_market/historical_equity_data/{ticker}.cvs')
 
                 f = f.set_axis(pd.DatetimeIndex(f.index, self.data.index.freq))
-                f = f.loc[self.data.index[0]:, ['close', 'volume']]
-                f.columns = pd.MultiIndex.from_tuples(list(zip([self.CLOSE, self.VOLUME], [ticker]*2)))
-
-                self.data.loc[self.data.index[0]:f.index[-1], ([self.CLOSE, self.VOLUME], ticker)] = f
+                if len(f.index.intersection(self.data.index)):
+                    f = f.loc[self.data.index[0]:, ['close', 'volume']]
+                    f.columns = pd.MultiIndex.from_tuples(list(zip([self.CLOSE, self.VOLUME], [ticker]*2)))
+    
+                    self.data.loc[self.data.index[0]:f.index[-1], ([self.CLOSE, self.VOLUME], ticker)] = f
 
         # Currency conversion
         if currency_conversion_df is not None:
@@ -1414,12 +1415,12 @@ class EuropeBanksStockMarketMetrics(Metrics):
         """
         return ['INGA.AS', 'ABN.AS', 'DBK.DE', 'CBK.DE', 'BNP.PA', 'ACA.PA', 'GLE.PA', 'KBC.BR', 'KBCA.BR',
                 'BIRG.IR', 'A5G.IR',
-                'BBVA.MC', 'BKT.MC', 'CABK.MC', 'SAB.MC', 'SAN.MC', 'EBS.VI', 'BG.VI', 'RBI.VI', 'NDA-FI.HE',
-                'ISP.MI', 'UCG.MI', 'FBK.MI', 'BAMI.MI', 'BPE.MI', 'BMPS.MI', 'BPSO.MI', 'BGN.MI', 'BCP.LS',
+                'BBVA.MC', 'BKT.MC', 'CABK.MC', 'SAB.MC', 'SAN.MC', 'UNI.MC', 'EBS.VI', 'BG.VI', 'RBI.VI', 'NDA-FI.HE',
+                'ISP.MI', 'UCG.MI', 'FBK.MI', 'BAMI.MI', 'BPE.MI', 'BMPS.MI', 'BGN.MI', 'BCP.LS',
                 'HSBA.L', 'BARC.L', 'LLOY.L', 'NWG.L', 'INVP.L', 'STAN.L', 'BGEO.L', 'TBCG.L',
                 'BCVN.SW', 'CMBN.SW',
                 'SEB-A.ST', 'SWED-A.ST', 'SHB-A.ST', 'AZA.ST',
-                'DANSKE.CO', 'SYDB.CO', 'JYSK.CO', 'RILBA.CO',
+                'DANSKE.CO', 'ALSYDB.CO', 'JYSK.CO', 'RILBA.CO',
                 'DNB.OL', 'SB1NO.OL',
                 'PEO.WA', 'PKO.WA', 'SPL.WA', 'MBK.WA']
 
@@ -1460,7 +1461,7 @@ class NLStockMarketMetrics(EuropeBanksStockMarketMetrics):
             if len(matching_cols) >= 3:
                 # Since Wikipedia doesn't yet reflect the extension of the index to 29 components, adjusting manually
                 return  [component for component in df.loc[:, 'Ticker']]\
-                         + ['CVC.AS', 'INPST.AS', 'JDEP.AS', 'WDP.BR']
+                         + ['CVC.AS', 'INPST.AS', 'JDEP.AS', 'WDP.BR', 'MICC.AS']
 
         return None
 
@@ -1468,3 +1469,21 @@ class NLStockMarketMetrics(EuropeBanksStockMarketMetrics):
     def get_aex_historical_components(start=None):
         return Metrics.get_historical_components(NLStockMarketMetrics.get_aex_components(),
             './stock_market/aex_changes_since_2021.csv', start)
+
+    @staticmethod
+    def get_aex_historical_shares_outstanding():
+        """
+        Returns a dictionary whose keys are ticker symbols representing companies that were part of the AEX Index
+        at any time since of 2021 and whose values are pd.Series objects representing the number of shares outstanding
+        on a given reporting date. I populated the missing days by doing a forward fill followed by a backward fill.
+        """
+        last_bd = BDay(0).rollback
+        return {'TKWY.AS': pd.Series([150056000, 148808992, 211620992, 221134000, 212620992, 214966000, 214966000,
+                                      213476000, 15966000, 219966000, 219966000, 228942000, 214407008, 206252000,
+                                      205955008, 205955008, 210923008, 197694000, 198302000, 199916234],
+                                     index=pd.DatetimeIndex([
+                                         '2020-12-31', '2021-03-31', '2021-06-30', '2021-09-30',
+                                         '2021-12-31', '2022-03-31', '2022-06-30', '2022-09-30',
+                                         '2022-12-30', '2023-03-31', '2023-06-30', '2023-09-29',
+                                         '2023-12-29', '2024-03-28', '2024-06-28', '2024-09-30',
+                                         '2024-12-31', '2025-03-31', '2025-06-30', '2025-09-30']).map(last_bd))}
